@@ -59,10 +59,10 @@ COPY . .
 # Set environment variables for Chromium/ChromeDriver
 # These might be needed to help Selenium find the browser and driver
 ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV CHROMEDRIVER_PATH=/usr/bin/chromium-driver
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver  # <-- Changed this line
 # Ensure /usr/bin is in PATH for executable
 ENV PATH="${PATH}:/usr/bin"
 
 # Command to run your application using Gunicorn
-# This matches your Procfile, but is now inside the Dockerfile
+# Using "shell form" for CMD to allow environment variable expansion
 CMD gunicorn main:app --timeout 600 -b 0.0.0.0:${PORT}
