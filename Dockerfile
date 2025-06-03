@@ -60,7 +60,8 @@ COPY . .
 # These might be needed to help Selenium find the browser and driver
 ENV CHROME_BIN=/usr/bin/chromium-browser
 ENV CHROMEDRIVER_PATH=/usr/bin/chromium-driver
-ENV PATH="${PATH}:/usr/bin" # Ensure /usr/bin is in PATH for executable
+# Ensure /usr/bin is in PATH for executable
+ENV PATH="${PATH}:/usr/bin"
 
 # Command to run your application using Gunicorn
 # This matches your Procfile, but is now inside the Dockerfile
