@@ -59,7 +59,7 @@ COPY . .
 # Set environment variables for Chromium/ChromeDriver
 # These might be needed to help Selenium find the browser and driver
 ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver  # <-- Changed this line
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 # Ensure /usr/bin is in PATH for executable
 ENV PATH="${PATH}:/usr/bin"
 
