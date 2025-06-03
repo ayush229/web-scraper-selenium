@@ -65,4 +65,4 @@ ENV PATH="${PATH}:/usr/bin"
 
 # Command to run your application using Gunicorn
 # This matches your Procfile, but is now inside the Dockerfile
-CMD ["gunicorn", "main:app", "--timeout", "600", "-b", "0.0.0.0:5000"]
+CMD ["gunicorn", "main:app", "--timeout", "600", "-b", "0.0.0.0:${PORT}"]
