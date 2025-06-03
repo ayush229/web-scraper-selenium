@@ -3,10 +3,12 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+# Removed: from webdriver_manager.chrome import ChromeDriverManager
+# Removed: from webdriver_manager.core.utils import ChromeType # Not needed if not using ChromeDriverManager
 from urllib.parse import urljoin, urlparse
 import logging
-import traceback # Import traceback for detailed error logging
+import traceback
+import os # Import os to get environment variables
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,19 +25,25 @@ def initialize_driver():
     options.add_argument("--start-maximized")
     options.add_argument("--incognito") # Browse in incognito mode
 
-    # Path to Chromium executable if not in default PATH (e.g., in Docker)
-    # The Dockerfile sets CHROME_BIN, which ChromeDriverManager might pick up,
-    # but explicitly setting it via binary_location can sometimes help.
-    # If you install chromium-browser, the binary is typically at /usr/bin/chromium-browser
-    options.binary_location = "/usr/bin/chromium-browser" # Or /usr/bin/google-chrome
+    # Explicitly set binary location for Chromium browser
+    # The Dockerfile ensures chromium-browser is at /usr/bin/chromium-browser
+    options.binary_location = "/usr/bin/chromium-browser"
 
     service = None
     driver = None
     try:
-        # Use ChromeDriverManager to automatically download and manage ChromeDriver
-        # This is useful for local development and can work in Docker if the binary location is specified.
-        # Ensure that the PATH in your Dockerfile includes /usr/bin for chromium-driver
-        service = Service(ChromeDriverManager().install())
+        # Directly use the installed ChromeDriver binary path
+        # The Dockerfile sets CHROMEDRIVER_PATH to /usr/bin/chromium-driver
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', "/usr/bin/chromium-driver")
+        
+        # Verify if the driver path exists and is executable
+        if not os.path.exists(chromedriver_path):
+            raise RuntimeError(f"ChromeDriver not found at {chromedriver_path}. Check Dockerfile installation.")
+        if not os.access(chromedriver_path, os.X_OK):
+            raise RuntimeError(f"ChromeDriver at {chromedriver_path} is not executable. Check Dockerfile permissions.")
+
+        service = Service(executable_path=chromedriver_path)
+        
         driver = webdriver.Chrome(service=service, options=options)
         logger.info("Selenium WebDriver initialized successfully.")
         return driver
@@ -79,9 +87,6 @@ def scrape_website(url, type="beautify"):
         driver.get(url)
         logger.info(f"Successfully loaded {url}")
 
-        # Wait for some content to load if needed (e.g., using WebDriverWait)
-        # For simplicity, we'll proceed directly to get page source
-
         if type == "raw":
             return {
                 "status": "success",
@@ -90,15 +95,12 @@ def scrape_website(url, type="beautify"):
                 "data": driver.page_source # Get the full rendered HTML
             }
 
-        # For "beautify" type, parse the rendered HTML with BeautifulSoup
         from bs4 import BeautifulSoup # Import BeautifulSoup here as it's only needed for beautify
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
         content = []
-        # Find major content sections; adjust selectors based on typical website structures
         sections = soup.find_all(['section', 'div', 'article', 'main'])
 
-        # If no specific sections found, consider the whole body or main content area
         if not sections:
             body_content = soup.find('body')
             if body_content:
@@ -114,33 +116,28 @@ def scrape_website(url, type="beautify"):
                 "links": []
             }
 
-            # Find the most prominent heading within the section
             heading = sec.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
             if heading:
                 section_data["heading"] = {"tag": heading.name, "text": heading.get_text(strip=True)}
 
-            # Find paragraphs and list items for general content
-            paragraphs_and_lists = sec.find_all(['p', 'li', 'span']) # Added span as it's often used for text
+            paragraphs_and_lists = sec.find_all(['p', 'li', 'span'])
             for elem in paragraphs_and_lists:
                 text = elem.get_text(strip=True)
                 if text:
                     section_data["content"].append(text)
 
-            # Extract image URLs
             for img in sec.find_all("img"):
                 src = img.get("src")
                 if src:
                     abs_url = urljoin(url, src)
                     section_data["images"].append(abs_url)
 
-            # Extract links
             for a in sec.find_all("a"):
                 href = a.get("href")
                 if href:
-                    abs_url = urljoin(url, href.split('#')[0]) # Remove fragment identifiers
+                    abs_url = urljoin(url, href.split('#')[0])
                     section_data["links"].append(abs_url)
 
-            # Only include sections with data
             if section_data["heading"] or section_data["content"] or section_data["images"] or section_data["links"]:
                 content.append(section_data)
 
@@ -158,7 +155,7 @@ def scrape_website(url, type="beautify"):
         return {"status": "error", "error": error_message}
     finally:
         if driver:
-            driver.quit() # Ensure the browser is closed after each scrape
+            driver.quit()
 
 def crawl_website(base_url, type="beautify", max_pages=50):
     """
@@ -183,14 +180,14 @@ def crawl_website(base_url, type="beautify", max_pages=50):
             - "error": (Only present if status is "error") A string describing the error.
     """
     visited = set()
-    to_visit = [base_url.rstrip('/')] # Normalize base URL
+    to_visit = [base_url.rstrip('/')]
     domain = urlparse(base_url).netloc
     all_data = []
-    driver = None # Initialize driver outside the loop to reuse it
+    driver = None
     pages_processed = 0
 
     try:
-        driver = initialize_driver() # Initialize driver once for the crawl session
+        driver = initialize_driver()
 
         while to_visit and pages_processed < max_pages:
             current_url = to_visit.pop(0)
@@ -203,7 +200,6 @@ def crawl_website(base_url, type="beautify", max_pages=50):
 
             try:
                 driver.get(current_url)
-                # For beautify, parse the page source with BeautifulSoup
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(driver.page_source, 'html.parser')
 
@@ -213,7 +209,7 @@ def crawl_website(base_url, type="beautify", max_pages=50):
                 else: # beautify
                     content_sections = []
                     main_sections = soup.find_all(['section', 'div', 'article', 'main'])
-                    if not main_sections: main_sections = [soup.find('body') or soup] # Fallback
+                    if not main_sections: main_sections = [soup.find('body') or soup]
 
                     for sec in main_sections:
                         section_data = {
@@ -251,8 +247,8 @@ def crawl_website(base_url, type="beautify", max_pages=50):
                 # Extract links for crawling (only for beautify mode, as raw doesn't need to crawl)
                 if type == "beautify":
                     # Get all links from the current page's HTML using Selenium directly
-                    # This is often more reliable for dynamic links than parsing static soup
-                    links_on_page = [elem.get_attribute('href') for elem in driver.find_elements(by=webdriver.common.by.By.TAG_NAME, value='a')]
+                    from selenium.webdriver.common.by import By # Import By here if not at top
+                    links_on_page = [elem.get_attribute('href') for elem in driver.find_elements(by=By.TAG_NAME, value='a')]
                     for link in links_on_page:
                         if link:
                             try:
@@ -262,7 +258,7 @@ def crawl_website(base_url, type="beautify", max_pages=50):
 
                                 # Check if the link is within the same domain and is http/https
                                 if parsed_absolute.scheme in ['http', 'https'] and parsed_absolute.netloc == domain:
-                                    clean_link = absolute_link.split('#')[0].rstrip('/') # Remove fragment and trailing slash
+                                    clean_link = absolute_link.split('#')[0].rstrip('/')
                                     if clean_link not in visited and clean_link not in to_visit:
                                         logger.debug(f"Adding link to visit queue: {clean_link}")
                                         to_visit.append(clean_link)
@@ -289,4 +285,4 @@ def crawl_website(base_url, type="beautify", max_pages=50):
         return {"status": "error", "error": error_message}
     finally:
         if driver:
-            driver.quit() # Ensure the browser is closed after the crawl session
+            driver.quit()
